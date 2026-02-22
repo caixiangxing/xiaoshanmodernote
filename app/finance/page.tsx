@@ -4,8 +4,6 @@ import { useState, useEffect } from 'react';
 import { AppLayout } from '@/components/app-layout';
 import { supabase, FinanceTransaction } from '@/lib/supabase';
 import { useAuth } from '@/lib/auth-context';
-import { usePinLock } from '@/lib/pin-lock-context';
-import { SensitiveWrapper } from '@/components/health/sensitive-wrapper';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -34,6 +32,7 @@ import {
   Trash2,
   ArrowUpCircle,
   ArrowDownCircle,
+  Shield,
 } from 'lucide-react';
 import { format, startOfMonth, endOfMonth } from 'date-fns';
 import { zhCN } from 'date-fns/locale';
@@ -79,8 +78,7 @@ const CATEGORY_COLORS: Record<string, string> = {
   default: 'bg-slate-100 text-slate-700 dark:bg-slate-800 dark:text-slate-300',
 };
 
-function AmountDisplay({ amount, type }: { amount: number; type: 'income' | 'expense' }) {
-  const { isUnlocked } = usePinLock();
+function AmountDisplay({ amount, type, isUnlocked }: { amount: number; type: 'income' | 'expense'; isUnlocked: boolean }) {
   if (!isUnlocked) {
     return <span className="font-mono font-semibold tracking-widest select-none">****</span>;
   }
@@ -101,7 +99,9 @@ interface AddTxFormData {
 
 export default function FinancePage() {
   const { user } = useAuth();
-  const { isUnlocked } = usePinLock();
+  const [isUnlocked, setIsUnlocked] = useState(false);
+  const [pinInput, setPinInput] = useState('');
+  const [pinError, setPinError] = useState(false);
   const [transactions, setTransactions] = useState<FinanceTransaction[]>([]);
   const [loading, setLoading] = useState(true);
   const [addOpen, setAddOpen] = useState(false);
@@ -113,6 +113,16 @@ export default function FinancePage() {
     note: '',
   });
   const [saving, setSaving] = useState(false);
+
+  const handlePinSubmit = () => {
+    if (pinInput === '0000') {
+      setIsUnlocked(true);
+      setPinError(false);
+    } else {
+      setPinError(true);
+      setPinInput('');
+    }
+  };
 
   const currentMonth = new Date();
   const monthStart = format(startOfMonth(currentMonth), 'yyyy-MM-dd');
@@ -174,6 +184,65 @@ export default function FinancePage() {
 
   const sortedDates = Object.keys(grouped).sort((a, b) => b.localeCompare(a));
 
+  if (!isUnlocked) {
+    return (
+      <AppLayout>
+        <div className="min-h-[70vh] flex items-center justify-center">
+          <Card className="w-full max-w-sm rounded-2xl shadow-lg">
+            <CardHeader className="text-center pb-4">
+              <div className="mx-auto mb-3 w-16 h-16 rounded-full bg-emerald-100 dark:bg-emerald-900/40 flex items-center justify-center">
+                <Shield className="w-8 h-8 text-emerald-600 dark:text-emerald-400" />
+              </div>
+              <CardTitle className="text-xl">财务数据已加密</CardTitle>
+              <p className="text-sm text-muted-foreground mt-2">
+                请输入 PIN 码以访问您的财务数据
+              </p>
+            </CardHeader>
+            <CardContent className="space-y-4">
+              <div>
+                <Label className="text-xs mb-2 block">PIN 码</Label>
+                <Input
+                  type="password"
+                  placeholder="输入 PIN 码"
+                  value={pinInput}
+                  onChange={(e) => {
+                    setPinInput(e.target.value);
+                    setPinError(false);
+                  }}
+                  onKeyDown={(e) => {
+                    if (e.key === 'Enter') {
+                      handlePinSubmit();
+                    }
+                  }}
+                  className={cn(
+                    'text-center text-lg tracking-widest',
+                    pinError && 'border-red-500 focus-visible:ring-red-500'
+                  )}
+                  maxLength={4}
+                />
+                {pinError && (
+                  <p className="text-xs text-red-500 mt-2 text-center">
+                    PIN 码错误，请重试
+                  </p>
+                )}
+              </div>
+              <Button
+                onClick={handlePinSubmit}
+                className="w-full"
+                disabled={pinInput.length !== 4}
+              >
+                解锁
+              </Button>
+              <p className="text-xs text-center text-muted-foreground">
+                测试提示：当前 PIN 为 0000
+              </p>
+            </CardContent>
+          </Card>
+        </div>
+      </AppLayout>
+    );
+  }
+
   return (
     <AppLayout>
       <div className="max-w-3xl mx-auto space-y-6">
@@ -193,8 +262,7 @@ export default function FinancePage() {
           </Button>
         </div>
 
-        <SensitiveWrapper label="财务数据受隐私保护">
-          <div className="grid grid-cols-3 gap-4">
+        <div className="grid grid-cols-3 gap-4">
             <Card className="rounded-2xl border-red-200/60 dark:border-red-800/40 bg-red-50 dark:bg-red-950/20">
               <CardContent className="p-4">
                 <div className="flex items-center gap-2 mb-1">
@@ -229,7 +297,6 @@ export default function FinancePage() {
               </CardContent>
             </Card>
           </div>
-        </SensitiveWrapper>
 
         <Card className="rounded-2xl">
           <CardHeader className="pb-3">
@@ -282,7 +349,7 @@ export default function FinancePage() {
                             </Badge>
                           </div>
                         </div>
-                        <AmountDisplay amount={tx.amount} type={tx.type} />
+                        <AmountDisplay amount={tx.amount} type={tx.type} isUnlocked={isUnlocked} />
                         <Button
                           variant="ghost"
                           size="sm"
